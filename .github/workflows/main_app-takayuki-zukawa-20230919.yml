@@ -14,18 +14,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Set up Node.js version
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v3
         with:
           node-version: '18.x'
+          cache: 'yarn'
+
+      - name: Get yarn cache directory path
+        id: yarn-cache-dir-path
+        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
+        
+      - uses: actions/cache@v3
+        id: yarn-cache # use this to check for `cache-hit` (`steps.yarn-cache.outputs.cache-hit != 'true'`)
+        with:
+          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
       - name: npm install, build, and test
         run: |
-          npm install
-          npm run build --if-present
-          npm run test --if-present
+          yarn install --froze-lockfile
+          yarn run build --if-present
+
+      - name: Craete node_modules.tar.gz
+        run: sh ./preapareLocalCompressedNodeModule.sh
+
+      - name: Zip all files for upload between jobs
+        run: zip next.zip ./* .next -qr
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v3
+        with:
+          name: node-app
+          path: next.zip
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v2
@@ -42,7 +66,7 @@ jobs:
 
     steps:
       - name: Download artifact from build job
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: node-app
 
@@ -53,4 +77,7 @@ jobs:
           app-name: 'app-takayuki-zukawa-20230919'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F76B15BA5AEB476A85E3D41385FF4DCC }}
-          package: .
+          package: next.zip
+
+      - name: Delete zip file
+        run: rm next.zip
